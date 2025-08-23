@@ -10,7 +10,6 @@ class Projectile:
         charge_factor=0.0,
         radius=5,
         color=(255, 255, 0),
-        on_hit=None,
         pierce=False,
         delay=0.0,
         life_time=2.0,
@@ -22,7 +21,6 @@ class Projectile:
         self.radius = radius
         self.color = color
         self.alive = True
-        self.on_hit = on_hit
         self.pierce = pierce
         self.delay = delay
         self.life_time = life_time
@@ -45,8 +43,6 @@ class Projectile:
             if (enemy.pos - self.pos).length() <= self.radius + enemy.radius:
                 enemy.take_damage(self.damage)
                 self.hit_enemies.add(enemy)
-                if self.on_hit:
-                    self.on_hit(self.charge_factor)
                 if not self.pierce:
                     self.alive = False
                     break
