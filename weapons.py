@@ -60,7 +60,7 @@ class RangedWeapon:
         charge: ChargeAttack,
         base_damage=5,
         projectile_speed=600,
-        burst_count=10,
+        burst_count=3,
         burst_interval=0.05,
         projectile_lifetime=2.0,
         charged_pierce=True,
@@ -78,34 +78,49 @@ class RangedWeapon:
     def update(self, dt):
         if self.burst_timer > 0:
             self.burst_timer = max(0.0, self.burst_timer - dt)
+    def _spawn_projectile(
+        self,
+        projectiles,
+        velocity,
+        damage,
+        charge_factor,
+        pierce=False,
+        delay=0.0,
+    ):
+        """Helper to create a projectile with common parameters."""
+        projectiles.append(
+            Projectile(
+                self.owner.pos,
+                velocity,
+                damage,
+                charge_factor=charge_factor,
+                pierce=pierce,
+                delay=delay,
+                life_time=self.projectile_lifetime,
+            )
+        )
+
+    def _fire_normal(self, projectiles, velocity, damage):
+        self._spawn_projectile(projectiles, velocity, damage, 0.0)
+
+    def _fire_charged(self, projectiles, velocity, damage):
+        self.burst_timer = self.burst_interval * self.burst_count
+        for i in range(self.burst_count):
+            self._spawn_projectile(
+                projectiles,
+                velocity,
+                damage,
+                1.0,
+                pierce=self.charged_pierce,
+                delay=i * self.burst_interval,
+            )
 
     def attack(self, projectiles, hold_time, direction):
         if self.burst_timer > 0:
             return
         velocity = direction * self.projectile_speed
         damage = self.base_damage
-        charged = self.charge.charged(hold_time)
-        if charged:
-            self.burst_timer = self.burst_interval * self.burst_count
-            for i in range(self.burst_count):
-                projectiles.append(
-                    Projectile(
-                        self.owner.pos,
-                        velocity,
-                        damage,
-                        charge_factor=1.0,
-                        pierce=self.charged_pierce,
-                        delay=i * self.burst_interval,
-                        life_time=self.projectile_lifetime,
-                    )
-                )
+        if self.charge.charged(hold_time):
+            self._fire_charged(projectiles, velocity, damage)
         else:
-            projectiles.append(
-                Projectile(
-                    self.owner.pos,
-                    velocity,
-                    damage,
-                    charge_factor=0.0,
-                    life_time=self.projectile_lifetime,
-                )
-            )
+            self._fire_normal(projectiles, velocity, damage)
