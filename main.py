@@ -5,7 +5,7 @@ import pygame
 from input_handler import InputHandler
 from weapons import ChargeAttack, MeleeWeapon, RangedWeapon
 from enemies import Enemy
-from effects import SlashEffect
+from effects import SlashEffect, CircleSlashEffect
 from feedback import Hitstop
 
 # Constants
@@ -226,21 +226,31 @@ class Game:
             aim_dir = aim_dir.normalize()
 
         if self.input.left.just_released and not self.player.is_dashing():
-            hits, attack_range, arc, cf = self.melee.attack(
+            hits, attack_range, arc, cf, charged = self.melee.attack(
                 self.enemies, self.input.left.time, aim_dir
             )
             if hits:
                 self.register_hit(cf)
-            self.slashes.append(
-                SlashEffect(
-                    self.player.pos,
-                    aim_dir,
-                    arc,
-                    attack_range,
-                    0.2 + 0.2 * cf,
-                    cf,
+            if charged:
+                self.slashes.append(
+                    CircleSlashEffect(
+                        self.player.pos,
+                        attack_range,
+                        0.2 + 0.2 * cf,
+                        cf,
+                    )
                 )
-            )
+            else:
+                self.slashes.append(
+                    SlashEffect(
+                        self.player.pos,
+                        aim_dir,
+                        arc,
+                        attack_range,
+                        0.2 + 0.2 * cf,
+                        cf,
+                    )
+                )
         if self.input.right.just_released and not self.player.is_dashing():
             self.ranged.attack(
                 self.projectiles, self.input.right.time, aim_dir, self.register_hit
