@@ -97,7 +97,7 @@ class Player:
 
     def try_dash(self):
         if self.dash_cooldown_left > 0 or self.dash_time_left > 0:
-            return
+            return False
         keys = pygame.key.get_pressed()
         move_dir = pygame.Vector2(0, 0)
         if keys[pygame.K_w]:
@@ -115,6 +115,7 @@ class Player:
         self.dash_dir = move_dir.normalize()
         self.dash_time_left = DASH_TIME
         self.iframes_left = DASH_IFRAMES
+        return True
 
     def is_dashing(self):
         return self.dash_time_left > 0
@@ -144,7 +145,7 @@ class Game:
         self.spawn_timer = ENEMY_SPAWN_INTERVAL
         self.total_spawned = 0
         self.elapsed_time = 0
-        self.melee = MeleeWeapon(self.player, ChargeAttack(0.7))
+        self.melee = MeleeWeapon(self.player, ChargeAttack(1.0))
         self.ranged = RangedWeapon(self.player, ChargeAttack(1.0))
 
     def toggle_fullscreen(self):
@@ -175,7 +176,8 @@ class Game:
                 ):
                     self.toggle_fullscreen()
                 elif event.key == pygame.K_SPACE:
-                    self.player.try_dash()
+                    if self.player.try_dash():
+                        self.input.cancel_all()
             elif event.type == pygame.VIDEORESIZE and not self.fullscreen:
                 self.window_size = [event.w, event.h]
                 self.screen = pygame.display.set_mode(self.window_size, pygame.RESIZABLE)
@@ -195,6 +197,7 @@ class Game:
         keys = pygame.key.get_pressed()
         self.player.update(dt, keys)
         self.input.update(dt)
+        self.ranged.update(dt)
 
         self.elapsed_time += dt
         self.spawn_timer -= dt
@@ -213,15 +216,17 @@ class Game:
             aim_dir = aim_dir.normalize()
 
         if self.input.left.just_released and not self.player.is_dashing():
-            _, attack_range, arc, cf, charged = self.melee.attack(
+            _, attack_range, arc, charged = self.melee.attack(
                 self.enemies, self.input.left.time, aim_dir
             )
+            cf = 1.0 if charged else 0.0
+            duration = 0.2 + 0.2 * cf
             if charged:
                 self.slashes.append(
                     CircleSlashEffect(
                         self.player.pos,
                         attack_range,
-                        0.2 + 0.2 * cf,
+                        duration,
                         cf,
                     )
                 )
@@ -232,7 +237,7 @@ class Game:
                         aim_dir,
                         arc,
                         attack_range,
-                        0.2 + 0.2 * cf,
+                        duration,
                         cf,
                     )
                 )
@@ -289,9 +294,7 @@ class Game:
         pygame.draw.line(self.screen, ORIGIN_COLOR, (ox, oy - 5), (ox, oy + 5), 1)
 
     def draw_overlay(self):
-        melee_radius = self.melee.base_range * (
-            1 + 0.5 * self.melee.charge.factor(self.input.left.time)
-        )
+        melee_radius = self.melee.base_range
         text = (
             f"Radius: {melee_radius:.0f}  "
             f"Enemies: {len(self.enemies)}  "

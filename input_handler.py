@@ -56,3 +56,9 @@ class InputHandler:
     def clear_transitions(self):
         self.left.clear_transitions()
         self.right.clear_transitions()
+
+    def cancel_all(self):
+        """Cancel any ongoing button presses without triggering actions."""
+        self.left.release()
+        self.right.release()
+        self.clear_transitions()
