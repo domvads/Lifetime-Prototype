@@ -6,6 +6,8 @@ ENEMY_DAMAGE = 10
 ENEMY_ATTACK_RANGE = 40
 ENEMY_WINDUP = 0.3
 ENEMY_COOLDOWN = 1.0
+BLINK_COLOR = (255, 255, 255)
+BLINK_DURATION = 0.15
 
 
 class Enemy:
@@ -21,9 +23,11 @@ class Enemy:
         self.cooldown = ENEMY_COOLDOWN
         self.attack_timer = 0
         self.windup_timer = 0
+        self.blink_time_left = 0.0
 
     def take_damage(self, damage):
         self.hp -= damage
+        self.blink_time_left += BLINK_DURATION
 
     def is_dead(self):
         return self.hp <= 0
@@ -31,6 +35,7 @@ class Enemy:
     def update(self, dt, player, on_hit=None):
         if self.hp <= 0:
             return
+        self.blink_time_left = max(0.0, self.blink_time_left - dt)
         to_player = player.pos - self.pos
         dist = to_player.length()
         direction = to_player.normalize() if dist > 0 else pygame.Vector2()
@@ -49,6 +54,7 @@ class Enemy:
 
     def draw(self, surface, camera):
         screen_pos = camera.world_to_screen(self.pos, surface.get_size())
+        color = BLINK_COLOR if self.blink_time_left > 0 else self.color
         pygame.draw.circle(
-            surface, self.color, (int(screen_pos.x), int(screen_pos.y)), self.radius
+            surface, color, (int(screen_pos.x), int(screen_pos.y)), self.radius
         )
