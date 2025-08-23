@@ -6,7 +6,6 @@ from input_handler import InputHandler
 from weapons import ChargeAttack, MeleeWeapon, RangedWeapon
 from enemies import Enemy
 from effects import SlashEffect, CircleSlashEffect
-from feedback import Hitstop
 
 # Constants
 WINDOW_WIDTH = 1280
@@ -147,7 +146,6 @@ class Game:
         self.elapsed_time = 0
         self.melee = MeleeWeapon(self.player, ChargeAttack(0.7))
         self.ranged = RangedWeapon(self.player, ChargeAttack(1.0))
-        self.hitstop = Hitstop()
 
     def toggle_fullscreen(self):
         if self.fullscreen:
@@ -178,8 +176,6 @@ class Game:
                     self.toggle_fullscreen()
                 elif event.key == pygame.K_SPACE:
                     self.player.try_dash()
-                elif event.key == pygame.K_F1:
-                    self.hitstop.enabled = not self.hitstop.enabled
             elif event.type == pygame.VIDEORESIZE and not self.fullscreen:
                 self.window_size = [event.w, event.h]
                 self.screen = pygame.display.set_mode(self.window_size, pygame.RESIZABLE)
@@ -195,22 +191,13 @@ class Game:
         pos = self.player.pos + pygame.Vector2(math.cos(angle), math.sin(angle)) * distance
         self.enemies.append(Enemy(pos))
 
-    def register_hit(self, charge_factor: float):
-        self.hitstop.add(0.04 + 0.1 * charge_factor)
-
-    def register_player_hit(self):
-        self.hitstop.add(0.03)
-
     def update(self, dt):
-        self.hitstop.update(dt)
-        sim_dt = 0.0 if self.hitstop.active() else dt
-
         keys = pygame.key.get_pressed()
-        self.player.update(sim_dt, keys)
-        self.input.update(sim_dt)
+        self.player.update(dt, keys)
+        self.input.update(dt)
 
         self.elapsed_time += dt
-        self.spawn_timer -= sim_dt
+        self.spawn_timer -= dt
         if self.spawn_timer <= 0:
             self.spawn_enemy()
             self.spawn_timer = ENEMY_SPAWN_INTERVAL
@@ -226,11 +213,9 @@ class Game:
             aim_dir = aim_dir.normalize()
 
         if self.input.left.just_released and not self.player.is_dashing():
-            hits, attack_range, arc, cf, charged = self.melee.attack(
+            _, attack_range, arc, cf, charged = self.melee.attack(
                 self.enemies, self.input.left.time, aim_dir
             )
-            if hits:
-                self.register_hit(cf)
             if charged:
                 self.slashes.append(
                     CircleSlashEffect(
@@ -253,23 +238,23 @@ class Game:
                 )
         if self.input.right.just_released and not self.player.is_dashing():
             self.ranged.attack(
-                self.projectiles, self.input.right.time, aim_dir, self.register_hit
+                self.projectiles, self.input.right.time, aim_dir
             )
 
         self.input.clear_transitions()
 
         for projectile in list(self.projectiles):
-            projectile.update(sim_dt, self.enemies)
+            projectile.update(dt, self.enemies)
             if not projectile.alive:
                 self.projectiles.remove(projectile)
 
         for enemy in list(self.enemies):
-            enemy.update(sim_dt, self.player, self.register_player_hit)
+            enemy.update(dt, self.player)
             if enemy.is_dead():
                 self.enemies.remove(enemy)
 
         for slash in list(self.slashes):
-            slash.update(sim_dt)
+            slash.update(dt)
             if slash.is_done():
                 self.slashes.remove(slash)
 
@@ -308,7 +293,6 @@ class Game:
             1 + 0.5 * self.melee.charge.factor(self.input.left.time)
         )
         text = (
-            f"Hitstop: {self.hitstop.time_left*1000:.0f}ms  "
             f"Radius: {melee_radius:.0f}  "
             f"Enemies: {len(self.enemies)}  "
             f"FPS: {self.clock.get_fps():.0f}"

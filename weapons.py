@@ -22,7 +22,7 @@ class MeleeWeapon:
         charge: ChargeAttack,
         base_damage=10,
         base_range=120,
-        arc_deg=60,
+        arc_deg=120,
         charge_threshold=0.3,
     ):
         self.owner = owner
@@ -46,7 +46,7 @@ class MeleeWeapon:
                     enemy.take_damage(damage)
                     hits.append(enemy)
         else:
-            arc = math.radians(self.arc_deg * (1 + 0.5 * charge_factor))
+            arc = math.radians(self.arc_deg)
             for enemy in enemies:
                 to_enemy = enemy.pos - self.owner.pos
                 dist = to_enemy.length()
@@ -83,7 +83,7 @@ class RangedWeapon:
         self.projectile_lifetime = projectile_lifetime
         self.charged_pierce = charged_pierce
 
-    def attack(self, projectiles, hold_time, direction, on_hit=None):
+    def attack(self, projectiles, hold_time, direction):
         charge_factor = self.charge.factor(hold_time)
         damage = self.base_damage * (1 + charge_factor)
         speed = self.projectile_speed * (1 + charge_factor)
@@ -96,7 +96,6 @@ class RangedWeapon:
                         velocity,
                         damage,
                         charge_factor=charge_factor,
-                        on_hit=on_hit,
                         pierce=self.charged_pierce,
                         delay=i * self.burst_interval,
                         life_time=self.projectile_lifetime,
@@ -109,7 +108,6 @@ class RangedWeapon:
                     velocity,
                     damage,
                     charge_factor=charge_factor,
-                    on_hit=on_hit,
                     life_time=self.projectile_lifetime,
                 )
             )
