@@ -1,42 +1,35 @@
 import math
-import pygame
 
 from projectiles import Projectile
 
 
 class ChargeAttack:
-    """Compute charge factor based on hold time."""
-    def __init__(self, max_charge_time: float):
-        self.max_charge_time = max_charge_time
+    """Binary charge logic with progress helper."""
 
-    def factor(self, hold_time: float) -> float:
-        if self.max_charge_time <= 0:
+    def __init__(self, threshold: float):
+        self.threshold = threshold
+
+    def progress(self, hold_time: float) -> float:
+        if self.threshold <= 0:
             return 1.0
-        return max(0.0, min(hold_time / self.max_charge_time, 1.0))
+        return max(0.0, min(hold_time / self.threshold, 1.0))
+
+    def charged(self, hold_time: float) -> bool:
+        return hold_time >= self.threshold
 
 
 class MeleeWeapon:
-    def __init__(
-        self,
-        owner,
-        charge: ChargeAttack,
-        base_damage=10,
-        base_range=120,
-        arc_deg=120,
-        charge_threshold=0.3,
-    ):
+    def __init__(self, owner, charge: ChargeAttack, base_damage=10, base_range=120, arc_deg=120):
         self.owner = owner
         self.charge = charge
         self.base_damage = base_damage
         self.base_range = base_range
         self.arc_deg = arc_deg
-        self.charge_threshold = charge_threshold
 
     def attack(self, enemies, hold_time, direction):
-        charge_factor = self.charge.factor(hold_time)
-        damage = self.base_damage * (1 + charge_factor)
-        attack_range = self.base_range * (1 + 0.5 * charge_factor)
-        charged = hold_time >= self.charge_threshold
+        charged = self.charge.charged(hold_time)
+        damage = self.base_damage
+        attack_range = self.base_range
         hits = []
         if charged:
             arc = math.tau
@@ -57,7 +50,7 @@ class MeleeWeapon:
                     if angle <= arc / 2:
                         enemy.take_damage(damage)
                         hits.append(enemy)
-        return hits, attack_range, arc, charge_factor, charged
+        return hits, attack_range, arc, charged
 
 
 class RangedWeapon:
@@ -67,7 +60,6 @@ class RangedWeapon:
         charge: ChargeAttack,
         base_damage=5,
         projectile_speed=600,
-        charge_threshold=0.3,
         burst_count=10,
         burst_interval=0.05,
         projectile_lifetime=2.0,
@@ -77,25 +69,31 @@ class RangedWeapon:
         self.charge = charge
         self.base_damage = base_damage
         self.projectile_speed = projectile_speed
-        self.charge_threshold = charge_threshold
         self.burst_count = burst_count
         self.burst_interval = burst_interval
         self.projectile_lifetime = projectile_lifetime
         self.charged_pierce = charged_pierce
+        self.burst_timer = 0.0
+
+    def update(self, dt):
+        if self.burst_timer > 0:
+            self.burst_timer = max(0.0, self.burst_timer - dt)
 
     def attack(self, projectiles, hold_time, direction):
-        charge_factor = self.charge.factor(hold_time)
-        damage = self.base_damage * (1 + charge_factor)
-        speed = self.projectile_speed * (1 + charge_factor)
-        velocity = direction * speed
-        if hold_time >= self.charge_threshold:
+        if self.burst_timer > 0:
+            return
+        velocity = direction * self.projectile_speed
+        damage = self.base_damage
+        charged = self.charge.charged(hold_time)
+        if charged:
+            self.burst_timer = self.burst_interval * self.burst_count
             for i in range(self.burst_count):
                 projectiles.append(
                     Projectile(
                         self.owner.pos,
                         velocity,
                         damage,
-                        charge_factor=charge_factor,
+                        charge_factor=1.0,
                         pierce=self.charged_pierce,
                         delay=i * self.burst_interval,
                         life_time=self.projectile_lifetime,
@@ -107,7 +105,7 @@ class RangedWeapon:
                     self.owner.pos,
                     velocity,
                     damage,
-                    charge_factor=charge_factor,
+                    charge_factor=0.0,
                     life_time=self.projectile_lifetime,
                 )
             )
