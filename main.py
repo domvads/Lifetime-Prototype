@@ -14,6 +14,12 @@ MIN_ZOOM = 0.25
 MAX_ZOOM = 4.0
 ZOOM_STEP = 1.1
 
+PLAYER_SPEED = 500
+DASH_SPEED = 1400
+DASH_TIME = 0.14
+DASH_COOLDOWN = 0.90
+DASH_IFRAMES = 0.16
+
 
 class Camera:
     def __init__(self, pos=(0, 0), zoom=1.0):
@@ -37,27 +43,63 @@ class Player:
         self.pos = pygame.Vector2(pos)
         self.radius = radius
         self.color = color
-        self.speed = 500
+        self.speed = PLAYER_SPEED
+        self.dash_time_left = 0
+        self.dash_cooldown_left = 0
+        self.iframes_left = 0
+        self.dash_dir = pygame.Vector2(1, 0)
+        self.last_move_dir = pygame.Vector2(1, 0)
 
     def update(self, dt, keys):
-        vel = pygame.Vector2(0, 0)
-        if keys[pygame.K_w]:
-            vel.y -= 1
-        if keys[pygame.K_s]:
-            vel.y += 1
-        if keys[pygame.K_a]:
-            vel.x -= 1
-        if keys[pygame.K_d]:
-            vel.x += 1
-        if vel.length_squared() > 0:
-            vel = vel.normalize()
-            self.pos += vel * self.speed * dt
+        self.dash_cooldown_left = max(0, self.dash_cooldown_left - dt)
+        self.iframes_left = max(0, self.iframes_left - dt)
+
+        if self.dash_time_left > 0:
+            self.pos += self.dash_dir * DASH_SPEED * dt
+            self.dash_time_left -= dt
+            if self.dash_time_left <= 0:
+                self.dash_time_left = 0
+                self.dash_cooldown_left = DASH_COOLDOWN
+        else:
+            vel = pygame.Vector2(0, 0)
+            if keys[pygame.K_w]:
+                vel.y -= 1
+            if keys[pygame.K_s]:
+                vel.y += 1
+            if keys[pygame.K_a]:
+                vel.x -= 1
+            if keys[pygame.K_d]:
+                vel.x += 1
+            if vel.length_squared() > 0:
+                vel = vel.normalize()
+                self.pos += vel * self.speed * dt
+                self.last_move_dir = vel
 
     def draw(self, surface, camera):
         screen_pos = camera.world_to_screen(self.pos, surface.get_size())
-        pygame.draw.circle(
-            surface, self.color, (int(screen_pos.x), int(screen_pos.y)), self.radius
-        )
+        color = self.color if self.iframes_left <= 0 else (100, 100, 255)
+        pygame.draw.circle(surface, color, (int(screen_pos.x), int(screen_pos.y)), self.radius)
+
+    def try_dash(self):
+        if self.dash_cooldown_left > 0 or self.dash_time_left > 0:
+            return
+        keys = pygame.key.get_pressed()
+        move_dir = pygame.Vector2(0, 0)
+        if keys[pygame.K_w]:
+            move_dir.y -= 1
+        if keys[pygame.K_s]:
+            move_dir.y += 1
+        if keys[pygame.K_a]:
+            move_dir.x -= 1
+        if keys[pygame.K_d]:
+            move_dir.x += 1
+        if move_dir.length_squared() == 0:
+            move_dir = self.last_move_dir
+        if move_dir.length_squared() == 0:
+            move_dir = pygame.Vector2(1, 0)
+        self.dash_dir = move_dir.normalize()
+        self.dash_time_left = DASH_TIME
+        self.iframes_left = DASH_IFRAMES
 
 
 class Game:
@@ -104,6 +146,8 @@ class Game:
                     event.key == pygame.K_RETURN and event.mod & pygame.KMOD_ALT
                 ):
                     self.toggle_fullscreen()
+                elif event.key == pygame.K_SPACE:
+                    self.player.try_dash()
             elif event.type == pygame.VIDEORESIZE and not self.fullscreen:
                 self.window_size = [event.w, event.h]
                 self.screen = pygame.display.set_mode(self.window_size, pygame.RESIZABLE)
@@ -143,7 +187,8 @@ class Game:
     def draw_overlay(self):
         text = (
             f"Player: ({self.player.pos.x:.1f}, {self.player.pos.y:.1f})  "
-            f"Zoom: {self.camera.zoom:.2f}  FPS: {self.clock.get_fps():.1f}"
+            f"Zoom: {self.camera.zoom:.2f}  FPS: {self.clock.get_fps():.1f}  "
+            f"Dash CD: {self.player.dash_cooldown_left:.1f}  I-Frames: {self.player.iframes_left:.2f}"
         )
         surface = self.font.render(text, True, (255, 255, 255))
         self.screen.blit(surface, (10, 10))
