@@ -1,4 +1,3 @@
-import sys
 import math
 import pygame
 
@@ -11,7 +10,6 @@ GRID_COLOR = (58, 63, 75)
 AXIS_COLOR_X = (255, 0, 0)  # x-axis (y=0)
 AXIS_COLOR_Y = (0, 255, 0)  # y-axis (x=0)
 ORIGIN_COLOR = (255, 255, 255)
-PAN_SPEED = 600  # world units per second
 MIN_ZOOM = 0.25
 MAX_ZOOM = 4.0
 ZOOM_STEP = 1.1
@@ -21,6 +19,9 @@ class Camera:
     def __init__(self, pos=(0, 0), zoom=1.0):
         self.pos = pygame.Vector2(pos)
         self.zoom = zoom
+
+    def center_on(self, target):
+        self.pos.update(target)
 
     def world_to_screen(self, world_pos, screen_size):
         center = pygame.Vector2(screen_size) / 2
@@ -36,7 +37,7 @@ class Player:
         self.pos = pygame.Vector2(pos)
         self.radius = radius
         self.color = color
-        self.speed = 250
+        self.speed = 500
 
     def update(self, dt, keys):
         vel = pygame.Vector2(0, 0)
@@ -86,19 +87,11 @@ class Game:
             self.fullscreen = True
 
     def handle_zoom(self, direction):
-        old_zoom = self.camera.zoom
         if direction > 0:
-            new_zoom = min(self.camera.zoom * ZOOM_STEP, MAX_ZOOM)
+            self.camera.zoom = min(self.camera.zoom * ZOOM_STEP, MAX_ZOOM)
         else:
-            new_zoom = max(self.camera.zoom / ZOOM_STEP, MIN_ZOOM)
-
-        if new_zoom != old_zoom:
-            mouse = pygame.mouse.get_pos()
-            world_before = self.camera.screen_to_world(mouse, self.screen.get_size())
-            self.camera.zoom = new_zoom
-            self.camera.pos = world_before - (
-                pygame.Vector2(mouse) - pygame.Vector2(self.screen.get_size()) / 2
-            ) / self.camera.zoom
+            self.camera.zoom = max(self.camera.zoom / ZOOM_STEP, MIN_ZOOM)
+        self.camera.center_on(self.player.pos)
 
     def handle_events(self):
         for event in pygame.event.get():
@@ -119,21 +112,8 @@ class Game:
 
     def update(self, dt):
         keys = pygame.key.get_pressed()
-        cam_move = pygame.Vector2(0, 0)
-        if keys[pygame.K_UP]:
-            cam_move.y -= 1
-        if keys[pygame.K_DOWN]:
-            cam_move.y += 1
-        if keys[pygame.K_LEFT]:
-            cam_move.x -= 1
-        if keys[pygame.K_RIGHT]:
-            cam_move.x += 1
-
-        if cam_move.length_squared() > 0:
-            cam_move = cam_move.normalize()
-            self.camera.pos += cam_move * PAN_SPEED * dt / self.camera.zoom
-
         self.player.update(dt, keys)
+        self.camera.center_on(self.player.pos)
 
     def draw_grid(self):
         width, height = self.screen.get_size()
@@ -162,7 +142,6 @@ class Game:
 
     def draw_overlay(self):
         text = (
-            f"Cam: ({self.camera.pos.x:.1f}, {self.camera.pos.y:.1f})  "
             f"Player: ({self.player.pos.x:.1f}, {self.player.pos.y:.1f})  "
             f"Zoom: {self.camera.zoom:.2f}  FPS: {self.clock.get_fps():.1f}"
         )
