@@ -31,6 +31,34 @@ class Camera:
         return (pygame.Vector2(screen_pos) - center) / self.zoom + self.pos
 
 
+class Player:
+    def __init__(self, pos=(0, 0), radius=20, color=(0, 0, 255)):
+        self.pos = pygame.Vector2(pos)
+        self.radius = radius
+        self.color = color
+        self.speed = 250
+
+    def update(self, dt, keys):
+        vel = pygame.Vector2(0, 0)
+        if keys[pygame.K_w]:
+            vel.y -= 1
+        if keys[pygame.K_s]:
+            vel.y += 1
+        if keys[pygame.K_a]:
+            vel.x -= 1
+        if keys[pygame.K_d]:
+            vel.x += 1
+        if vel.length_squared() > 0:
+            vel = vel.normalize()
+            self.pos += vel * self.speed * dt
+
+    def draw(self, surface, camera):
+        screen_pos = camera.world_to_screen(self.pos, surface.get_size())
+        pygame.draw.circle(
+            surface, self.color, (int(screen_pos.x), int(screen_pos.y)), self.radius
+        )
+
+
 class Game:
     def __init__(self):
         pygame.init()
@@ -40,6 +68,7 @@ class Game:
 
         self.clock = pygame.time.Clock()
         self.camera = Camera()
+        self.player = Player()
 
         self.running = True
         self.fullscreen = False
@@ -90,19 +119,21 @@ class Game:
 
     def update(self, dt):
         keys = pygame.key.get_pressed()
-        move = pygame.Vector2(0, 0)
-        if keys[pygame.K_w] or keys[pygame.K_UP]:
-            move.y -= 1
-        if keys[pygame.K_s] or keys[pygame.K_DOWN]:
-            move.y += 1
-        if keys[pygame.K_a] or keys[pygame.K_LEFT]:
-            move.x -= 1
-        if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
-            move.x += 1
+        cam_move = pygame.Vector2(0, 0)
+        if keys[pygame.K_UP]:
+            cam_move.y -= 1
+        if keys[pygame.K_DOWN]:
+            cam_move.y += 1
+        if keys[pygame.K_LEFT]:
+            cam_move.x -= 1
+        if keys[pygame.K_RIGHT]:
+            cam_move.x += 1
 
-        if move.length_squared() > 0:
-            move = move.normalize()
-            self.camera.pos += move * PAN_SPEED * dt / self.camera.zoom
+        if cam_move.length_squared() > 0:
+            cam_move = cam_move.normalize()
+            self.camera.pos += cam_move * PAN_SPEED * dt / self.camera.zoom
+
+        self.player.update(dt, keys)
 
     def draw_grid(self):
         width, height = self.screen.get_size()
@@ -132,6 +163,7 @@ class Game:
     def draw_overlay(self):
         text = (
             f"Cam: ({self.camera.pos.x:.1f}, {self.camera.pos.y:.1f})  "
+            f"Player: ({self.player.pos.x:.1f}, {self.player.pos.y:.1f})  "
             f"Zoom: {self.camera.zoom:.2f}  FPS: {self.clock.get_fps():.1f}"
         )
         surface = self.font.render(text, True, (255, 255, 255))
@@ -140,6 +172,7 @@ class Game:
     def draw(self):
         self.screen.fill(BG_COLOR)
         self.draw_grid()
+        self.player.draw(self.screen, self.camera)
         self.draw_overlay()
         pygame.display.flip()
 
