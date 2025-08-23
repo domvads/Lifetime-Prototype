@@ -33,11 +33,13 @@ class MeleeWeapon:
             to_enemy = enemy.pos - self.owner.pos
             dist = to_enemy.length()
             if dist <= attack_range and dist > 0:
-                angle = math.acos(max(-1.0, min(direction.dot(to_enemy.normalize()), 1.0)))
+                angle = math.acos(
+                    max(-1.0, min(direction.dot(to_enemy.normalize()), 1.0))
+                )
                 if angle <= arc / 2:
                     enemy.take_damage(damage)
                     hits.append(enemy)
-        return hits
+        return hits, attack_range, arc, charge_factor
 
 
 class RangedWeapon:

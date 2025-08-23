@@ -1,9 +1,11 @@
 import math
+import random
 import pygame
 
 from input_handler import InputHandler
 from weapons import ChargeAttack, MeleeWeapon, RangedWeapon
 from enemies import Enemy
+from effects import SlashEffect
 
 # Constants
 WINDOW_WIDTH = 1280
@@ -19,10 +21,13 @@ MAX_ZOOM = 4.0
 ZOOM_STEP = 1.1
 
 PLAYER_SPEED = 500
-DASH_SPEED = 1400
-DASH_TIME = 0.14
-DASH_COOLDOWN = 0.90
-DASH_IFRAMES = 0.16
+PLAYER_MAX_HP = 100
+DASH_SPEED = 1600
+DASH_TIME = 0.25
+DASH_COOLDOWN = 1.0
+DASH_IFRAMES = 0.18
+
+ENEMY_SPAWN_INTERVAL = 2.5
 
 
 class Camera:
@@ -48,6 +53,7 @@ class Player:
         self.radius = radius
         self.color = color
         self.speed = PLAYER_SPEED
+        self.hp = PLAYER_MAX_HP
         self.dash_time_left = 0
         self.dash_cooldown_left = 0
         self.iframes_left = 0
@@ -83,6 +89,11 @@ class Player:
         screen_pos = camera.world_to_screen(self.pos, surface.get_size())
         color = self.color if self.iframes_left <= 0 else (100, 100, 255)
         pygame.draw.circle(surface, color, (int(screen_pos.x), int(screen_pos.y)), self.radius)
+
+    def take_damage(self, dmg):
+        if self.iframes_left > 0 or self.dash_time_left > 0:
+            return
+        self.hp = max(0, self.hp - dmg)
 
     def try_dash(self):
         if self.dash_cooldown_left > 0 or self.dash_time_left > 0:
@@ -128,7 +139,11 @@ class Game:
 
         self.input = InputHandler()
         self.projectiles = []
-        self.enemies = [Enemy((300, 0)), Enemy((400, 200))]
+        self.enemies = []
+        self.slashes = []
+        self.spawn_timer = ENEMY_SPAWN_INTERVAL
+        self.total_spawned = 0
+        self.elapsed_time = 0
         self.melee = MeleeWeapon(self.player, ChargeAttack(0.7))
         self.ranged = RangedWeapon(self.player, ChargeAttack(1.0))
 
@@ -170,10 +185,23 @@ class Game:
                 if not self.player.is_dashing():
                     self.input.handle_event(event)
 
+    def spawn_enemy(self):
+        angle = random.uniform(0, 2 * math.pi)
+        distance = 600
+        pos = self.player.pos + pygame.Vector2(math.cos(angle), math.sin(angle)) * distance
+        self.enemies.append(Enemy(pos))
+
     def update(self, dt):
         keys = pygame.key.get_pressed()
         self.player.update(dt, keys)
         self.input.update(dt)
+
+        self.elapsed_time += dt
+        self.spawn_timer -= dt
+        if self.spawn_timer <= 0:
+            self.spawn_enemy()
+            self.spawn_timer = ENEMY_SPAWN_INTERVAL
+            self.total_spawned += 1
 
         mouse_world = self.camera.screen_to_world(
             pygame.mouse.get_pos(), self.screen.get_size()
@@ -185,7 +213,19 @@ class Game:
             aim_dir = aim_dir.normalize()
 
         if self.input.left.just_released and not self.player.is_dashing():
-            self.melee.attack(self.enemies, self.input.left.time, aim_dir)
+            hits, attack_range, arc, cf = self.melee.attack(
+                self.enemies, self.input.left.time, aim_dir
+            )
+            self.slashes.append(
+                SlashEffect(
+                    self.player.pos,
+                    aim_dir,
+                    arc,
+                    attack_range,
+                    0.2 + 0.2 * cf,
+                    cf,
+                )
+            )
         if self.input.right.just_released and not self.player.is_dashing():
             self.ranged.attack(self.projectiles, self.input.right.time, aim_dir)
 
@@ -196,7 +236,18 @@ class Game:
             if not projectile.alive:
                 self.projectiles.remove(projectile)
 
-        self.enemies = [e for e in self.enemies if not e.is_dead()]
+        for enemy in list(self.enemies):
+            enemy.update(dt, self.player)
+            if enemy.is_dead():
+                self.enemies.remove(enemy)
+
+        for slash in list(self.slashes):
+            slash.update(dt)
+            if slash.is_done():
+                self.slashes.remove(slash)
+
+        if self.player.hp <= 0:
+            self.running = False
 
         self.camera.center_on(self.player.pos)
 
@@ -226,10 +277,14 @@ class Game:
         pygame.draw.line(self.screen, ORIGIN_COLOR, (ox, oy - 5), (ox, oy + 5), 1)
 
     def draw_overlay(self):
+        spawn_rate = (
+            self.total_spawned / self.elapsed_time if self.elapsed_time > 0 else 0
+        )
+        enemy_hp = self.enemies[0].hp if self.enemies else 0
         text = (
-            f"Player: ({self.player.pos.x:.1f}, {self.player.pos.y:.1f})  "
-            f"Zoom: {self.camera.zoom:.2f}  FPS: {self.clock.get_fps():.1f}  "
-            f"Dash CD: {self.player.dash_cooldown_left:.1f}  I-Frames: {self.player.iframes_left:.2f}  "
+            f"Player HP: {self.player.hp:.0f}  Enemies: {len(self.enemies)}  "
+            f"Spawn: {spawn_rate:.2f}/s  Enemy HP: {enemy_hp:.0f}  "
+            f"Dash: {self.player.dash_time_left:.2f}/{self.player.dash_cooldown_left:.2f}  "
             f"MCharge: {self.melee.charge.factor(self.input.left.time):.2f}  "
             f"RCharge: {self.ranged.charge.factor(self.input.right.time):.2f}"
         )
@@ -244,6 +299,8 @@ class Game:
         for projectile in self.projectiles:
             projectile.draw(self.screen, self.camera)
         self.player.draw(self.screen, self.camera)
+        for slash in self.slashes:
+            slash.draw(self.screen, self.camera)
         self.draw_overlay()
         pygame.display.flip()
 
