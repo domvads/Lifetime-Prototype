@@ -146,7 +146,7 @@ class Game:
         self.total_spawned = 0
         self.elapsed_time = 0
         self.melee = MeleeWeapon(self.player, ChargeAttack(1.0))
-        self.ranged = RangedWeapon(self.player, ChargeAttack(1.0))
+        self.ranged = RangedWeapon(self.player, ChargeAttack(1.0), burst_count=3)
 
     def toggle_fullscreen(self):
         if self.fullscreen:
