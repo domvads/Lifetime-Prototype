@@ -16,7 +16,7 @@ class ChargeAttack:
 
 
 class MeleeWeapon:
-    def __init__(self, owner, charge: ChargeAttack, base_damage=10, base_range=60, arc_deg=60):
+    def __init__(self, owner, charge: ChargeAttack, base_damage=10, base_range=120, arc_deg=60):
         self.owner = owner
         self.charge = charge
         self.base_damage = base_damage
@@ -49,9 +49,17 @@ class RangedWeapon:
         self.base_damage = base_damage
         self.projectile_speed = projectile_speed
 
-    def attack(self, projectiles, hold_time, direction):
+    def attack(self, projectiles, hold_time, direction, on_hit=None):
         charge_factor = self.charge.factor(hold_time)
         damage = self.base_damage * (1 + charge_factor)
         speed = self.projectile_speed * (1 + charge_factor)
         velocity = direction * speed
-        projectiles.append(Projectile(self.owner.pos, velocity, damage))
+        projectiles.append(
+            Projectile(
+                self.owner.pos,
+                velocity,
+                damage,
+                charge_factor=charge_factor,
+                on_hit=on_hit,
+            )
+        )

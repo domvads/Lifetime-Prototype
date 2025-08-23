@@ -6,6 +6,7 @@ from input_handler import InputHandler
 from weapons import ChargeAttack, MeleeWeapon, RangedWeapon
 from enemies import Enemy
 from effects import SlashEffect
+from feedback import Hitstop, ScreenShake
 
 # Constants
 WINDOW_WIDTH = 1280
@@ -34,16 +35,17 @@ class Camera:
     def __init__(self, pos=(0, 0), zoom=1.0):
         self.pos = pygame.Vector2(pos)
         self.zoom = zoom
+        self.offset = pygame.Vector2(0, 0)
 
     def center_on(self, target):
         self.pos.update(target)
 
     def world_to_screen(self, world_pos, screen_size):
-        center = pygame.Vector2(screen_size) / 2
+        center = pygame.Vector2(screen_size) / 2 + self.offset
         return (pygame.Vector2(world_pos) - self.pos) * self.zoom + center
 
     def screen_to_world(self, screen_pos, screen_size):
-        center = pygame.Vector2(screen_size) / 2
+        center = pygame.Vector2(screen_size) / 2 + self.offset
         return (pygame.Vector2(screen_pos) - center) / self.zoom + self.pos
 
 
@@ -146,6 +148,8 @@ class Game:
         self.elapsed_time = 0
         self.melee = MeleeWeapon(self.player, ChargeAttack(0.7))
         self.ranged = RangedWeapon(self.player, ChargeAttack(1.0))
+        self.hitstop = Hitstop()
+        self.shake = ScreenShake()
 
     def toggle_fullscreen(self):
         if self.fullscreen:
@@ -176,6 +180,9 @@ class Game:
                     self.toggle_fullscreen()
                 elif event.key == pygame.K_SPACE:
                     self.player.try_dash()
+                elif event.key == pygame.K_F1:
+                    self.hitstop.enabled = not self.hitstop.enabled
+                    self.shake.enabled = not self.shake.enabled
             elif event.type == pygame.VIDEORESIZE and not self.fullscreen:
                 self.window_size = [event.w, event.h]
                 self.screen = pygame.display.set_mode(self.window_size, pygame.RESIZABLE)
@@ -191,13 +198,26 @@ class Game:
         pos = self.player.pos + pygame.Vector2(math.cos(angle), math.sin(angle)) * distance
         self.enemies.append(Enemy(pos))
 
+    def register_hit(self, charge_factor: float):
+        self.hitstop.add(0.04 + 0.1 * charge_factor)
+        self.shake.add(5 + 15 * charge_factor, 0.2 + 0.2 * charge_factor)
+
+    def register_player_hit(self):
+        self.hitstop.add(0.03)
+        self.shake.add(4, 0.2)
+
     def update(self, dt):
+        self.hitstop.update(dt)
+        self.shake.update(dt)
+        self.camera.offset = self.shake.offset
+        sim_dt = 0.0 if self.hitstop.active() else dt
+
         keys = pygame.key.get_pressed()
-        self.player.update(dt, keys)
-        self.input.update(dt)
+        self.player.update(sim_dt, keys)
+        self.input.update(sim_dt)
 
         self.elapsed_time += dt
-        self.spawn_timer -= dt
+        self.spawn_timer -= sim_dt
         if self.spawn_timer <= 0:
             self.spawn_enemy()
             self.spawn_timer = ENEMY_SPAWN_INTERVAL
@@ -216,6 +236,8 @@ class Game:
             hits, attack_range, arc, cf = self.melee.attack(
                 self.enemies, self.input.left.time, aim_dir
             )
+            if hits:
+                self.register_hit(cf)
             self.slashes.append(
                 SlashEffect(
                     self.player.pos,
@@ -227,22 +249,24 @@ class Game:
                 )
             )
         if self.input.right.just_released and not self.player.is_dashing():
-            self.ranged.attack(self.projectiles, self.input.right.time, aim_dir)
+            self.ranged.attack(
+                self.projectiles, self.input.right.time, aim_dir, self.register_hit
+            )
 
         self.input.clear_transitions()
 
         for projectile in list(self.projectiles):
-            projectile.update(dt, self.enemies)
+            projectile.update(sim_dt, self.enemies)
             if not projectile.alive:
                 self.projectiles.remove(projectile)
 
         for enemy in list(self.enemies):
-            enemy.update(dt, self.player)
+            enemy.update(sim_dt, self.player, self.register_player_hit)
             if enemy.is_dead():
                 self.enemies.remove(enemy)
 
         for slash in list(self.slashes):
-            slash.update(dt)
+            slash.update(sim_dt)
             if slash.is_done():
                 self.slashes.remove(slash)
 
@@ -277,16 +301,15 @@ class Game:
         pygame.draw.line(self.screen, ORIGIN_COLOR, (ox, oy - 5), (ox, oy + 5), 1)
 
     def draw_overlay(self):
-        spawn_rate = (
-            self.total_spawned / self.elapsed_time if self.elapsed_time > 0 else 0
+        melee_radius = self.melee.base_range * (
+            1 + 0.5 * self.melee.charge.factor(self.input.left.time)
         )
-        enemy_hp = self.enemies[0].hp if self.enemies else 0
         text = (
-            f"Player HP: {self.player.hp:.0f}  Enemies: {len(self.enemies)}  "
-            f"Spawn: {spawn_rate:.2f}/s  Enemy HP: {enemy_hp:.0f}  "
-            f"Dash: {self.player.dash_time_left:.2f}/{self.player.dash_cooldown_left:.2f}  "
-            f"MCharge: {self.melee.charge.factor(self.input.left.time):.2f}  "
-            f"RCharge: {self.ranged.charge.factor(self.input.right.time):.2f}"
+            f"Hitstop: {self.hitstop.time_left*1000:.0f}ms  "
+            f"Shake: {self.shake.current_amplitude:.1f}  "
+            f"Radius: {melee_radius:.0f}  "
+            f"Enemies: {len(self.enemies)}  "
+            f"FPS: {self.clock.get_fps():.0f}"
         )
         surface = self.font.render(text, True, (255, 255, 255))
         self.screen.blit(surface, (10, 10))

@@ -28,7 +28,7 @@ class Enemy:
     def is_dead(self):
         return self.hp <= 0
 
-    def update(self, dt, player):
+    def update(self, dt, player, on_hit=None):
         if self.hp <= 0:
             return
         to_player = player.pos - self.pos
@@ -39,6 +39,8 @@ class Enemy:
             self.windup_timer -= dt
             if self.windup_timer <= 0 and dist <= self.attack_range:
                 player.take_damage(self.damage)
+                if on_hit:
+                    on_hit()
                 self.attack_timer = self.cooldown
         elif dist <= self.attack_range and self.attack_timer <= 0:
             self.windup_timer = self.windup
