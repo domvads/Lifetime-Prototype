@@ -1,6 +1,10 @@
 import math
 import pygame
 
+from input_handler import InputHandler
+from weapons import ChargeAttack, MeleeWeapon, RangedWeapon
+from enemies import Enemy
+
 # Constants
 WINDOW_WIDTH = 1280
 WINDOW_HEIGHT = 720
@@ -101,6 +105,9 @@ class Player:
         self.dash_time_left = DASH_TIME
         self.iframes_left = DASH_IFRAMES
 
+    def is_dashing(self):
+        return self.dash_time_left > 0
+
 
 class Game:
     def __init__(self):
@@ -118,6 +125,12 @@ class Game:
         self.last_window_size = self.window_size[:]
 
         self.font = pygame.font.SysFont("consolas", 16)
+
+        self.input = InputHandler()
+        self.projectiles = []
+        self.enemies = [Enemy((300, 0)), Enemy((400, 200))]
+        self.melee = MeleeWeapon(self.player, ChargeAttack(0.7))
+        self.ranged = RangedWeapon(self.player, ChargeAttack(1.0))
 
     def toggle_fullscreen(self):
         if self.fullscreen:
@@ -153,10 +166,38 @@ class Game:
                 self.screen = pygame.display.set_mode(self.window_size, pygame.RESIZABLE)
             elif event.type == pygame.MOUSEWHEEL:
                 self.handle_zoom(event.y)
+            elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
+                if not self.player.is_dashing():
+                    self.input.handle_event(event)
 
     def update(self, dt):
         keys = pygame.key.get_pressed()
         self.player.update(dt, keys)
+        self.input.update(dt)
+
+        mouse_world = self.camera.screen_to_world(
+            pygame.mouse.get_pos(), self.screen.get_size()
+        )
+        aim_dir = mouse_world - self.player.pos
+        if aim_dir.length_squared() == 0:
+            aim_dir = self.player.last_move_dir
+        else:
+            aim_dir = aim_dir.normalize()
+
+        if self.input.left.just_released and not self.player.is_dashing():
+            self.melee.attack(self.enemies, self.input.left.time, aim_dir)
+        if self.input.right.just_released and not self.player.is_dashing():
+            self.ranged.attack(self.projectiles, self.input.right.time, aim_dir)
+
+        self.input.clear_transitions()
+
+        for projectile in list(self.projectiles):
+            projectile.update(dt, self.enemies)
+            if not projectile.alive:
+                self.projectiles.remove(projectile)
+
+        self.enemies = [e for e in self.enemies if not e.is_dead()]
+
         self.camera.center_on(self.player.pos)
 
     def draw_grid(self):
@@ -188,7 +229,9 @@ class Game:
         text = (
             f"Player: ({self.player.pos.x:.1f}, {self.player.pos.y:.1f})  "
             f"Zoom: {self.camera.zoom:.2f}  FPS: {self.clock.get_fps():.1f}  "
-            f"Dash CD: {self.player.dash_cooldown_left:.1f}  I-Frames: {self.player.iframes_left:.2f}"
+            f"Dash CD: {self.player.dash_cooldown_left:.1f}  I-Frames: {self.player.iframes_left:.2f}  "
+            f"MCharge: {self.melee.charge.factor(self.input.left.time):.2f}  "
+            f"RCharge: {self.ranged.charge.factor(self.input.right.time):.2f}"
         )
         surface = self.font.render(text, True, (255, 255, 255))
         self.screen.blit(surface, (10, 10))
@@ -196,6 +239,10 @@ class Game:
     def draw(self):
         self.screen.fill(BG_COLOR)
         self.draw_grid()
+        for enemy in self.enemies:
+            enemy.draw(self.screen, self.camera)
+        for projectile in self.projectiles:
+            projectile.draw(self.screen, self.camera)
         self.player.draw(self.screen, self.camera)
         self.draw_overlay()
         pygame.display.flip()
