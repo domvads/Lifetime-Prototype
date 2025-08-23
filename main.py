@@ -6,7 +6,7 @@ from input_handler import InputHandler
 from weapons import ChargeAttack, MeleeWeapon, RangedWeapon
 from enemies import Enemy
 from effects import SlashEffect
-from feedback import Hitstop, ScreenShake
+from feedback import Hitstop
 
 # Constants
 WINDOW_WIDTH = 1280
@@ -35,17 +35,16 @@ class Camera:
     def __init__(self, pos=(0, 0), zoom=1.0):
         self.pos = pygame.Vector2(pos)
         self.zoom = zoom
-        self.offset = pygame.Vector2(0, 0)
 
     def center_on(self, target):
         self.pos.update(target)
 
     def world_to_screen(self, world_pos, screen_size):
-        center = pygame.Vector2(screen_size) / 2 + self.offset
+        center = pygame.Vector2(screen_size) / 2
         return (pygame.Vector2(world_pos) - self.pos) * self.zoom + center
 
     def screen_to_world(self, screen_pos, screen_size):
-        center = pygame.Vector2(screen_size) / 2 + self.offset
+        center = pygame.Vector2(screen_size) / 2
         return (pygame.Vector2(screen_pos) - center) / self.zoom + self.pos
 
 
@@ -149,7 +148,6 @@ class Game:
         self.melee = MeleeWeapon(self.player, ChargeAttack(0.7))
         self.ranged = RangedWeapon(self.player, ChargeAttack(1.0))
         self.hitstop = Hitstop()
-        self.shake = ScreenShake()
 
     def toggle_fullscreen(self):
         if self.fullscreen:
@@ -182,7 +180,6 @@ class Game:
                     self.player.try_dash()
                 elif event.key == pygame.K_F1:
                     self.hitstop.enabled = not self.hitstop.enabled
-                    self.shake.enabled = not self.shake.enabled
             elif event.type == pygame.VIDEORESIZE and not self.fullscreen:
                 self.window_size = [event.w, event.h]
                 self.screen = pygame.display.set_mode(self.window_size, pygame.RESIZABLE)
@@ -200,16 +197,12 @@ class Game:
 
     def register_hit(self, charge_factor: float):
         self.hitstop.add(0.04 + 0.1 * charge_factor)
-        self.shake.add(5 + 15 * charge_factor, 0.2 + 0.2 * charge_factor)
 
     def register_player_hit(self):
         self.hitstop.add(0.03)
-        self.shake.add(4, 0.2)
 
     def update(self, dt):
         self.hitstop.update(dt)
-        self.shake.update(dt)
-        self.camera.offset = self.shake.offset
         sim_dt = 0.0 if self.hitstop.active() else dt
 
         keys = pygame.key.get_pressed()
@@ -306,11 +299,15 @@ class Game:
         )
         text = (
             f"Hitstop: {self.hitstop.time_left*1000:.0f}ms  "
-            f"Shake: {self.shake.current_amplitude:.1f}  "
             f"Radius: {melee_radius:.0f}  "
             f"Enemies: {len(self.enemies)}  "
             f"FPS: {self.clock.get_fps():.0f}"
         )
+        blink_info = "  ".join(
+            f"E{i}:{e.blink_time_left*1000:.0f}ms" for i, e in enumerate(self.enemies)
+        )
+        if blink_info:
+            text += "  " + blink_info
         surface = self.font.render(text, True, (255, 255, 255))
         self.screen.blit(surface, (10, 10))
 
